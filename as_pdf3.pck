@@ -2,7 +2,7 @@ CREATE OR REPLACE PACKAGE as_pdf3 IS
   /**********************************************
   **
   ** Additional comment by Andreas Weiden:
-  **as_pdf3
+  **AS_PDF3_MOD
   
   ** The following methods were added by me for additinal functionality needed for PK_JRXML_REPGEN
   **
@@ -148,15 +148,6 @@ CREATE OR REPLACE PACKAGE as_pdf3 IS
                   p_width       IN NUMBER := NULL -- width of the available text box
                  ,
                   p_alignment   IN VARCHAR2 := NULL);
-  --
-  FUNCTION WRITE(p_txt         IN VARCHAR2,
-                 p_x           IN NUMBER := NULL,
-                 p_y           IN NUMBER := NULL,
-                 p_line_height IN NUMBER := NULL,
-                 p_start       IN NUMBER := NULL,
-                 p_width       IN NUMBER := NULL,
-                 p_alignment   IN VARCHAR2 := NULL,
-                 p_lines       IN NUMBER := NULL) RETURN NUMBER;
   --
   PROCEDURE set_font(p_index         PLS_INTEGER,
                      p_fontsize_pt   NUMBER,
@@ -506,7 +497,7 @@ CREATE OR REPLACE PACKAGE BODY as_pdf3 IS
       g_fonts(p_ind).name := p_name;
       g_fonts(p_ind).fontname := p_name;
       g_fonts(p_ind).standard := TRUE;
-      g_fonts(p_ind).encoding := 'CL8MSWIN1251';
+      g_fonts(p_ind).encoding := 'WE8MSWIN1252';
       g_fonts(p_ind).charset := sys_context('userenv', 'LANGUAGE');
       g_fonts(p_ind).charset := substr(g_fonts(p_ind).charset, 1, instr(g_fonts(p_ind).charset, '.')) || g_fonts(p_ind).encoding;
       g_fonts(p_ind).char_width_tab := uncompress_withs(p_compressed_tab);
@@ -1067,8 +1058,8 @@ end'));
         NULL;
     END;
     --
-    RETURN add_object(to_char(SYSDATE, '"/CreationDate (D:"YYYYMMDDhh24miss")"') || '/Creator (MDOffice)' || t_banner || '/Title <FEFF' || utl_i18n.string_to_raw(g_info.title, 'AL16UTF16') || '>' || '/Author <FEFF' || utl_i18n.string_to_raw(g_info.author, 'AL16UTF16') || '>' || '/Subject <FEFF' ||
-                      utl_i18n.string_to_raw(g_info.subject, 'AL16UTF16') || '>' || '/Keywords <FEFF' || utl_i18n.string_to_raw(g_info.keywords, 'AL16UTF16') || '>');
+    RETURN add_object(to_char(SYSDATE, '"/CreationDate (D:"YYYYMMDDhh24miss")"') || '/Creator (AS-PDF 0.3.0 by Anton Scheffer)' || t_banner || '/Title <FEFF' || utl_i18n.string_to_raw(g_info.title, 'AL16UTF16') || '>' || '/Author <FEFF' || utl_i18n.string_to_raw(g_info.author, 'AL16UTF16') || '>' ||
+                      '/Subject <FEFF' || utl_i18n.string_to_raw(g_info.subject, 'AL16UTF16') || '>' || '/Keywords <FEFF' || utl_i18n.string_to_raw(g_info.keywords, 'AL16UTF16') || '>');
   END;
   --
   PROCEDURE finish_pdf IS
@@ -1701,149 +1692,6 @@ end'));
     END IF;
   END;
   --
-  FUNCTION WRITE(p_txt         IN VARCHAR2,
-                 p_x           IN NUMBER := NULL,
-                 p_y           IN NUMBER := NULL,
-                 p_line_height IN NUMBER := NULL,
-                 p_start       IN NUMBER := NULL,
-                 p_width       IN NUMBER := NULL,
-                 p_alignment   IN VARCHAR2 := NULL,
-                 p_lines       IN NUMBER := NULL) RETURN NUMBER IS
-    t_line_height NUMBER;
-    t_x           NUMBER;
-    t_y           NUMBER;
-    t_start       NUMBER;
-    t_width       NUMBER;
-    t_len         NUMBER;
-    t_cnt         PLS_INTEGER;
-    t_ind         PLS_INTEGER;
-    t_alignment   VARCHAR2(100);
-    t_lines       NUMBER := nvl(p_lines, 0);
-  BEGIN
-    IF p_txt IS NULL THEN
-      RETURN 0;
-    END IF;
-    --
-    IF g_current_font IS NULL THEN
-      set_font('helvetica');
-    END IF;
-    --
-    IF t_lines > 500 THEN
-      RETURN 0;
-    END IF;
-    --
-    t_line_height := nvl(p_line_height, g_fonts(g_current_font).fontsize);
-    IF (t_line_height < g_fonts(g_current_font).fontsize OR t_line_height > (g_settings.page_height - g_settings.margin_top - t_line_height) / 4) THEN
-      t_line_height := g_fonts(g_current_font).fontsize;
-    END IF;
-    t_start := nvl(p_start, g_settings.margin_left);
-    IF (t_start < g_settings.margin_left OR t_start > g_settings.page_width - g_settings.margin_right - g_settings.margin_left) THEN
-      t_start := g_settings.margin_left;
-    END IF;
-    t_width := nvl(p_width, g_settings.page_width - g_settings.margin_right - g_settings.margin_left);
-    IF (t_width < str_len('   ') OR t_width > g_settings.page_width - g_settings.margin_right - g_settings.margin_left) THEN
-      t_width := g_settings.page_width - g_settings.margin_right - g_settings.margin_left;
-    END IF;
-    t_x := coalesce(p_x, g_x, g_settings.margin_left);
-    t_y := coalesce(p_y, g_y, g_settings.page_height - g_settings.margin_top - t_line_height);
-    IF t_y < 0 THEN
-      t_y := coalesce(g_y, g_settings.page_height - g_settings.margin_top - t_line_height) - t_line_height;
-    END IF;
-    IF t_x > t_start + t_width THEN
-      t_x := t_start;
-      t_y := t_y - t_line_height;
-    ELSIF t_x < t_start THEN
-      t_x := t_start;
-    END IF;
-    IF t_y < g_settings.margin_bottom THEN
-      new_page;
-      t_x := t_start;
-      t_y := g_settings.page_height - g_settings.margin_top - t_line_height;
-    END IF;
-    --
-    t_ind := instr(p_txt, chr(10));
-    IF t_ind > 0 THEN
-      g_x     := t_x;
-      g_y     := t_y;
-      t_lines := WRITE(rtrim(substr(p_txt, 1, t_ind - 1), chr(13)), t_x, t_y, t_line_height, t_start, t_width, p_alignment, t_lines);
-      t_y     := g_y - t_line_height;
-      IF t_y < g_settings.margin_bottom THEN
-        new_page;
-        t_y := g_settings.page_height - g_settings.margin_top - t_line_height;
-      END IF;
-      g_x     := t_start;
-      g_y     := t_y;
-      t_lines := WRITE(substr(p_txt, t_ind + 1), t_start, t_y, t_line_height, t_start, t_width, p_alignment, t_lines);
-      RETURN t_lines;
-    END IF;
-    --
-    t_len := str_len(p_txt);
-    IF t_len <= t_width - t_x + t_start THEN
-      t_alignment := lower(substr(p_alignment, 1, 100));
-      IF instr(t_alignment, 'right') > 0
-         OR instr(t_alignment, 'end') > 0 THEN
-        t_x := t_start + t_width - t_len;
-      ELSIF instr(t_alignment, 'center') > 0 THEN
-        t_x := (t_width + t_x + t_start - t_len) / 2;
-      END IF;
-      put_txt(t_x, t_y, p_txt);
-      t_lines := t_lines + 1;
-      g_x     := t_x + t_len + str_len(' ');
-      g_y     := t_y;
-      RETURN t_lines;
-    END IF;
-    --
-    t_cnt := 0;
-    WHILE (instr(p_txt, ' ', 1, t_cnt + 1) > 0 AND str_len(substr(p_txt, 1, instr(p_txt, ' ', 1, t_cnt + 1) - 1)) <= t_width - t_x + t_start) LOOP
-      t_cnt := t_cnt + 1;
-    END LOOP;
-    IF t_cnt > 0 THEN
-      t_ind   := instr(p_txt, ' ', 1, t_cnt);
-      t_lines := WRITE(substr(p_txt, 1, t_ind - 1), t_x, t_y, t_line_height, t_start, t_width, p_alignment, t_lines);
-      t_y     := t_y - t_line_height;
-      IF t_y < g_settings.margin_bottom THEN
-        new_page;
-        t_y := g_settings.page_height - g_settings.margin_top - t_line_height;
-      END IF;
-      t_lines := WRITE(substr(p_txt, t_ind + 1), t_start, t_y, t_line_height, t_start, t_width, p_alignment, t_lines);
-      RETURN t_lines;
-    END IF;
-    --
-    IF t_x > t_start
-       AND t_len < t_width THEN
-      t_y := t_y - t_line_height;
-      IF t_y < g_settings.margin_bottom THEN
-        new_page;
-        t_y := g_settings.page_height - g_settings.margin_top - t_line_height;
-      END IF;
-      t_lines := WRITE(p_txt, t_start, t_y, t_line_height, t_start, t_width, p_alignment, t_lines);
-    ELSE
-      IF length(p_txt) = 1 THEN
-        IF t_x > t_start THEN
-          t_y := t_y - t_line_height;
-          IF t_y < g_settings.margin_bottom THEN
-            new_page;
-            t_y := g_settings.page_height - g_settings.margin_top - t_line_height;
-          END IF;
-        END IF;
-        t_lines := WRITE(p_txt, t_x, t_y, t_line_height, t_start, t_len, NULL, t_lines);
-      ELSE
-        t_ind := 2; -- start with 2 to make sure we get amaller string!
-        WHILE str_len(substr(p_txt, 1, t_ind)) <= t_width - t_x + t_start LOOP
-          t_ind := t_ind + 1;
-        END LOOP;
-        t_lines := WRITE(substr(p_txt, 1, t_ind - 1), t_x, t_y, t_line_height, t_start, t_width, p_alignment, t_lines);
-        t_y     := t_y - t_line_height;
-        IF t_y < g_settings.margin_bottom THEN
-          new_page;
-          t_y := g_settings.page_height - g_settings.margin_top - t_line_height;
-        END IF;
-        t_lines := WRITE(substr(p_txt, t_ind), t_start, t_y, t_line_height, t_start, t_width, p_alignment, t_lines);
-      END IF;
-    END IF;
-    RETURN t_lines;
-  END;
-  --
   FUNCTION load_ttf_font(p_font     BLOB,
                          p_encoding VARCHAR2 := 'WINDOWS-1252',
                          p_embed    BOOLEAN := FALSE,
@@ -2343,7 +2191,7 @@ end'));
         BEGIN
           t_prv_diff        := -1;
           t_utf16_charset   := substr(this_font.charset, 1, instr(this_font.charset, '.')) || 'AL16UTF16';
-          t_winansi_charset := substr(this_font.charset, 1, instr(this_font.charset, '.')) || 'CL8MSWIN1251';
+          t_winansi_charset := substr(this_font.charset, 1, instr(this_font.charset, '.')) || 'WE8MSWIN1252';
           FOR t_code IN 32 .. 255 LOOP
             t_unicode := utl_raw.cast_to_binary_integer(utl_raw.convert(hextoraw(to_char(t_code, 'fm0x')), t_utf16_charset, this_font.charset));
             t_glyphname := '';
